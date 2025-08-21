@@ -1,0 +1,117 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from datetime import datetime
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch, cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
+
+rng = pd.date_range("2025-05-01", periods=60, freq="D")
+categories = ["Alpha", "Beta", "Gamma", "Delta"]
+np.random.seed(42)
+
+df = pd.DataFrame({
+    "date": np.random.choice(rng, size=500),
+    "category": np.random.choice(categories, size=500, p=[0.3, 0.25, 0.25, 0.2]),
+    "units": np.random.poisson(lam=20, size=500) + 1,
+    "price": np.round(np.random.uniform(10, 60, size=500), 2)
+})
+df["revenue"] = df["units"] * df["price"]
+
+line_chart_path = "/mnt/data/trend_line.png"
+bar_chart_path = "/mnt/data/category_bar.png"
+pie_chart_path = "/mnt/data/category_pie.png"
+pdf_path = "/mnt/data/Analytics_Report.pdf"
+
+daily = df.groupby("date")["revenue"].sum().sort_index()
+plt.figure(figsize=(8, 4))
+plt.plot(daily.index, daily.values, linewidth=2)
+plt.title("Daily Revenue Trend")
+plt.xlabel("Date")
+plt.ylabel("Revenue")
+plt.tight_layout()
+plt.savefig(line_chart_path, dpi=200)
+plt.close()
+
+cat = df.groupby("category")["revenue"].sum().sort_values(ascending=False)
+plt.figure(figsize=(7, 4))
+plt.bar(cat.index, cat.values)
+plt.title("Revenue by Category")
+plt.xlabel("Category")
+plt.ylabel("Revenue")
+plt.tight_layout()
+plt.savefig(bar_chart_path, dpi=200)
+plt.close()
+
+plt.figure(figsize=(5, 5))
+plt.pie(cat.values, labels=cat.index, autopct="%1.1f%%", startangle=90)
+plt.title("Category Contribution")
+plt.tight_layout()
+plt.savefig(pie_chart_path, dpi=200)
+plt.close()
+
+def build_pdf_report(df: pd.DataFrame, title: str = "Business Analytics Report", subtitle: str = "Auto-generated with pandas • matplotlib • reportlab"):
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("TitleStyle", parent=styles["Title"], fontSize=24, leading=28, spaceAfter=12)
+    subtitle_style = ParagraphStyle("SubtitleStyle", parent=styles["Normal"], fontSize=11, textColor=colors.grey, spaceAfter=18)
+    h2 = ParagraphStyle("Heading2", parent=styles["Heading2"], fontSize=16, spaceAfter=8)
+    body = ParagraphStyle("Body", parent=styles["BodyText"], fontSize=10, leading=14)
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=42, bottomMargin=36)
+    elements = []
+    elements.append(Paragraph(title, title_style))
+    elements.append(Paragraph(subtitle, subtitle_style))
+    elements.append(Spacer(1, 0.2 * inch))
+    total_rev = df["revenue"].sum()
+    total_units = df["units"].sum()
+    avg_price = df["price"].mean()
+    unique_days = df["date"].nunique()
+    kpi_data = [["Total Revenue", f"{total_rev:,.2f}", "Total Units", f"{total_units:,.0f}"],
+                ["Average Price", f"{avg_price:,.2f}", "Active Days", f"{unique_days}"]]
+    kpi_table = Table(kpi_data, colWidths=[3*cm, 4*cm, 3*cm, 4*cm])
+    kpi_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                                   ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                                   ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                                   ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                                   ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+                                   ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                                   ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                   ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.whitesmoke, colors.beige]),
+                                   ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                                   ("TOPPADDING", (0, 0), (-1, -1), 8)]))
+    elements.append(Paragraph("Key Metrics", h2))
+    elements.append(kpi_table)
+    elements.append(Spacer(1, 0.25 * inch))
+    elements.append(Paragraph("Visualizations", h2))
+    elements.append(Paragraph("Daily Revenue Trend", body))
+    elements.append(Image(line_chart_path, width=6.5*inch, height=3.0*inch))
+    elements.append(Spacer(1, 0.2 * inch))
+    elements.append(Paragraph("Revenue by Category", body))
+    elements.append(Image(bar_chart_path, width=6.0*inch, height=3.0*inch))
+    elements.append(Spacer(1, 0.2 * inch))
+    elements.append(Paragraph("Category Contribution", body))
+    elements.append(Image(pie_chart_path, width=4.5*inch, height=4.5*inch))
+    elements.append(PageBreak())
+    elements.append(Paragraph("Data Sample (first 15 rows)", h2))
+    sample = df.sort_values("date").head(15).copy()
+    sample["date"] = sample["date"].dt.strftime("%Y-%m-%d")
+    table_data = [list(sample.columns)] + sample.values.tolist()
+    data_table = Table(table_data, repeatRows=1, colWidths=[3*cm, 3*cm, 2.2*cm, 2.2*cm, 2.6*cm])
+    data_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f0")),
+                                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                                    ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                                    ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
+                                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                                    ("TOPPADDING", (0, 0), (-1, -1), 6)]))
+    elements.append(data_table)
+    elements.append(Spacer(1, 0.15 * inch))
+    doc.build(elements)
+
+build_pdf_report(df, title="Sales Performance Report")
+pdf_path
